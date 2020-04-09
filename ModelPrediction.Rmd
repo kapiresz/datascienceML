@@ -1,0 +1,168 @@
+---
+title: "Machine Learning Project 1s"
+author: "Markos Hay"
+date: "09/04/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+#I-) Introduction
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+#II) Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment.
+
+#III) What you should submit
+
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+#IV) Loading Data
+
+```{R}
+library(caret); library(randomForest); library(rpart)
+```
+
+```{r}
+url.train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url.test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(url.train), na.strings = c("NA", "", "#DIV0!"))
+testing <- read.csv(url(url.test), na.strings = c("NA", "", "#DIV0!"))
+```
+
+We need to verify that the columns in both tables (training, testing) are the same or not.
+
+```{r}
+#define the same columns
+sameColumsName <- colnames(training) == colnames(testing)
+colnames(training)[sameColumsName==FALSE]
+```
+
+#V) Cleaning, Training & Testing Data
+
+We can see several columns not relevant for predicting and to the activity movement. Delete columns with all missing values.
+
+```{R}
+training<-training[,colSums(is.na(training)) == 0]
+testing <-testing[,colSums(is.na(testing)) == 0]
+#dimTraining <- dim(training)
+#dimTesting <- dim(testing)
+head(colnames(training), 10)
+```
+
+```{r}
+training <- training[,8:dim(training)[2]]
+testing <- testing[,8:dim(testing)[2]]
+```
+
+We can delete first 7 variables, because they are irrelevant to our project: “user_name”, “raw_timestamp_part_1”, “raw_timestamp_part_2”, “cvtd_timestamp”, “new_window” and “num_window” (columns 1 to 7).
+
+#VI) Activity Model
+
+Activity model
+CLASSE is our outcome variable (5-level factor variable).
+“Participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions:
+##(Class A) - exactly according to the specification
+##(Class B) - throwing the elbows to the front
+##(Class C) - lifting the dumbbell only halfway
+##(Class D) - lowering the dumbbell only halfway
+##(Class E) - throwing the hips to the front
+##Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes. The exercises were performed by six male participants aged between 20-28 years, with little weight lifting experience. We made sure that all participants could easily simulate the mistakes in a safe and controlled manner by using a relatively light dumbbell (1.25kg)” [1]
+.
+Prediction evaluations will be based on maximizing the accuracy and minimizing the out-of-sample error. To predict we will use all the variables after cleaning.
+“Tree” & “Random Forest” will be apply as different learning methods. The model with the highest accuracy will be choosen as our final model.
+
+#VII) Training & CrossValidation (Data Slicing)
+
+Our outcome variable classe is an unordered factor variable. Thus, we can choose our error type as 1-accuracy. We have a large sample size (19622) in the Training data set. This allow us to divide our Training sample into TrainingCV and testingCV to allow cross-validation. Decision tree and random forest algorithms are known for their ability of detecting the features that are very important for classification.
+
+Cross-validation will be performed by subsampling our training data and splitted into training part and cross-validation with ratio 0.7. The most accurate model will be choosen and tested on the original Testing dataset.
+
+```{r}
+set.seed(12345)
+inTrain <- createDataPartition(training$classe, p=0.7, list=FALSE)
+trainingCV <- training[inTrain,]
+testingCV <- training[-inTrain,]
+dim(trainingCV); dim(testingCV)
+```
+
+#VIII) Data Plotting
+
+Plotting some accelaration data in trainingCV data, we can see that the pattern is very similar and hard to distinguish among those classes A,B,C,D,E
+
+```{r}
+qplot(accel_arm_x, accel_arm_y, col=classe, data=trainingCV)
+```
+
+```{r}
+qplot(accel_forearm_x, accel_forearm_y, col=classe, data=trainingCV)
+```
+
+#IX) Predicting Models
+##Apply Classification Tree Model
+
+```{r}
+modelCTree <- rpart(classe ~ ., data=trainingCV, method="class")
+predictionCTree <- predict(modelCTree, testingCV, type="class")
+CTree <- confusionMatrix(predictionCTree, testingCV$classe)
+CTree
+```
+
+```{r}
+library(rpart.plot)
+rpart.plot(modelCTree)
+```
+
+## Apply Random Forest Model
+
+```{r}
+modelRF <- randomForest(classe ~ ., data=trainingCV, method="class")
+predictionRF <- predict(modelRF, testingCV, type="class")
+RF <- confusionMatrix(predictionRF, testingCV$classe)
+RF
+```
+
+```{r}
+CV <- testingCV
+CV$GOODpred <- testingCV$classe == predictionRF
+qplot(accel_forearm_x, accel_forearm_y, col=GOODpred, data=CV)
+```
+
+On the plot you can see the new prediction error values. Due to the high degree of accuracy, you can see that the point of failure are poor.
+
+## Accuracy & Expected out-of-sample error
+
+Accuracy is the proportion of correct classified observation over the total sample in the CrossValidation data set. Look a comparison of the both methods. Random Forest method is much much better.
+
+#X) Final Prediction
+
+```{r}
+FinalPrediction <- predict(modelRF, testing)
+knitr::kable(t(data.frame(FinalPrediction)))
+```
+
+Conclusions: Prediction evaluations were based on maximizing the accuracy and minimizing the out-of-sample error. All other available variables after cleaning were used for prediction. Two models were tested using decision tree and random forest algorithms. The model with the highest accuracy were chosen as final model.
+
+```{r}
+# Write files for the final prediction
+pml_files = function(x){ 
+  for(i in 1:length(x)) 
+        { 
+        filename = paste0("problem_",i,".txt") 
+        write.table(x[i],file=filename, row.names=FALSE, col.names=FALSE, quote=FALSE)
+        }
+}
+
+pml_files(FinalPrediction)
+```
+
